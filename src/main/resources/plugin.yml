@@ -1,0 +1,16 @@
+name: UltraStrike
+version: 1.1.0
+main: me.ultrastrike.UltraStrike
+api-version: '1.21'
+author: Custom
+description: Ultra strike charge from hits with configurable ActionBar HUD
+commands:
+  ultrastrike:
+    description: UltraStrike admin command
+    usage: /ultrastrike reload
+permissions:
+  ultrastrike.admin:
+    description: Allows /ultrastrike reload
+    default: op
+softdepend:
+  - AuraSkills
