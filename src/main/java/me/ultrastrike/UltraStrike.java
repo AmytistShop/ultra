@@ -400,6 +400,8 @@ private static final class AuraSkillsHook {
     private java.lang.reflect.Method userManagerGetUser;
     private java.lang.reflect.Method userGetMana;
     private java.lang.reflect.Method userGetMaxMana;
+	    private java.lang.reflect.Method userSetMana;
+	    private java.lang.reflect.Method userAddMana;
 
     static final class ManaSnapshot {
         final boolean available;
