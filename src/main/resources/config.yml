@@ -1,18 +1,18 @@
 # UltraStrike config
 
 ultra:
-  mana-cost: 4
+  mana-cost: 2
   lightning:
     chance-percent: 4.0
     extra-damage: 3.0
     fire-ticks: 60
+    extra-mana-cost: 2
   damage-multiplier: 1.6
 
 ui:
   update-ticks: 5
   show-when-zero: false
-  show-only-with-sword-or-axe: true
-
+  show-only-with-sword-or-axe: false
   title: "&d⚡ &fУльтра удар &d⚡"
   ready-text: "&aГОТОВ!"
   used-text: "&cУЛЬТА ИСПОЛЬЗОВАНА!"
@@ -27,6 +27,25 @@ ui:
     filled: "&a▌"
     empty: "&8▌"
 
+
+# Items that can build ultra charge (Material names)
+chargeable-items:
+  - DIAMOND_SWORD
+  - NETHERITE_SWORD
+  - IRON_SWORD
+  - GOLDEN_SWORD
+  - STONE_SWORD
+  - WOODEN_SWORD
+  - DIAMOND_AXE
+  - NETHERITE_AXE
+  - IRON_AXE
+  - GOLDEN_AXE
+  - STONE_AXE
+  - WOODEN_AXE
+  - BOW
+  - CROSSBOW
+  - TRIDENT
+  - MACE
 gain-by-damage:
   "1": 5
   "2": 8
@@ -61,17 +80,25 @@ hud:
 
 particles:
   enabled: true
+
+  # Particles while charging ultra (0 = off)
   charge:
-    interval-ticks: 12
-    count: 3
-    list: ["ENCHANT", "ELECTRIC_SPARK", "END_ROD"]
+    interval-ticks: 20
+    count: 0
+    list: []
+
+  # Particles when ultra is ready (100%)
   ready:
     interval-ticks: 20
-    count: 5
-    list: ["TOTEM", "END_ROD", "ELECTRIC_SPARK"]
+    count: 6
+    list: ["SCULK_CHARGE", "TRIAL_OMEN"]
+
+  # Particles when using ultra
   use:
-    count: 18
-    list: ["SWEEP_ATTACK", "SOUL_FIRE_FLAME", "CRIT"]
+    count: 12
+    list: ["TRIAL_SPAWNER_DETECTION_OMINOUS", "TRIAL_OMEN", "SCULK_SOUL"]
+
+  # Particles on kill with ultra
   kill:
-    count: 22
-    list: ["FIREWORK", "END_ROD", "CRIT"]
+    count: 12
+    list: ["SCULK_SOUL", "SCULK_CHARGE_POP"]

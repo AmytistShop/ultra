@@ -26,6 +26,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.bukkit.Material;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.AbstractArrow;
+import org.bukkit.entity.Trident;
 
 public final class UltraStrike extends JavaPlugin implements Listener {
 
@@ -37,6 +41,7 @@ public final class UltraStrike extends JavaPlugin implements Listener {
     private int uiUpdateTicks;
     private boolean showWhenZero;
     private boolean showOnlyWithSwordOrAxe;
+    private final java.util.Set<Material> chargeableItems = new java.util.HashSet<>();
 
     private String actionbarFormat;
     private boolean hudShowHp;
@@ -99,6 +104,20 @@ private int particlesKillCount;
         uiUpdateTicks = Math.max(1, getConfig().getInt("ui.update-ticks", 5));
         showWhenZero = getConfig().getBoolean("ui.show-when-zero", false);
         showOnlyWithSwordOrAxe = getConfig().getBoolean("ui.show-only-with-sword-or-axe", true);
+
+// Load chargeable items (what can build ultra)
+chargeableItems.clear();
+for (String matName : getConfig().getStringList("ultra.chargeable-items")) {
+    Material mat = Material.matchMaterial(matName);
+    if (mat != null) chargeableItems.add(mat);
+}
+// Fallback if list is empty (swords + axes)
+if (chargeableItems.isEmpty()) {
+    for (Material mat : Material.values()) {
+        String n = mat.name();
+        if (n.endsWith("_SWORD") || n.endsWith("_AXE")) chargeableItems.add(mat);
+    }
+}
 
         barLength = Math.max(5, getConfig().getInt("ui.bar.length", 20));
         barFilled = getConfig().getString("ui.bar.filled", "&a▌");
@@ -167,7 +186,7 @@ particlesKill = parseParticles(getConfig().getStringList("particles.kill.list"),
 
         // Ultra charge (only relevant if holding correct item, but we still show HP/mana)
         int percent = charge.getOrDefault(p.getUniqueId(), 0);
-        boolean canUseUltraItem = !showOnlyWithSwordOrAxe || isSwordOrAxe(p.getInventory().getItemInMainHand());
+        boolean canUseUltraItem = !showOnlyWithSwordOrAxe || isChargeableItem(p.getInventory().getItemInMainHand());
 
         // HP
         String hpPart = "";
@@ -245,11 +264,13 @@ private String joinParts(String separator, String... parts) {
     return String.join(separator, out);
 }
 
-    private boolean isSwordOrAxe(ItemStack item) {
-        if (item == null || item.getType().isAir()) return false;
-        String n = item.getType().name();
-        return n.endsWith("_SWORD") || n.endsWith("_AXE");
-    }
+    private boolean isChargeableItem(ItemStack item) {
+    if (item == null) return false;
+    Material type = item.getType();
+    if (type == null || type == Material.AIR) return false;
+    return chargeableItems.contains(type);
+}
+
 
     private int clamp(int v, int lo, int hi) {
         return Math.max(lo, Math.min(hi, v));
@@ -263,13 +284,37 @@ private String joinParts(String separator, String... parts) {
 
 @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDamage(EntityDamageByEntityEvent e) {
-        if (!(e.getDamager() instanceof Player attacker)) return;
+Player attacker = null;
+Entity damager = e.getDamager();
+if (damager instanceof Player p) {
+    attacker = p;
+} else if (damager instanceof Projectile proj && proj.getShooter() instanceof Player p) {
+    attacker = p;
+} else {
+    return;
+}
+
 
         Entity victim = e.getEntity();
         if (!(victim instanceof LivingEntity livingVictim)) return;
 
         ItemStack hand = attacker.getInventory().getItemInMainHand();
-        if (!isSwordOrAxe(hand)) return;
+boolean canCharge = true;
+if (damager instanceof Projectile proj) {
+    if (proj instanceof Trident) {
+        canCharge = chargeableItems.contains(Material.TRIDENT);
+    } else if (proj instanceof AbstractArrow) {
+        canCharge = chargeableItems.contains(Material.BOW) || chargeableItems.contains(Material.CROSSBOW);
+    } else {
+        // Unknown projectile type - allow by default
+        canCharge = true;
+    }
+} else {
+    canCharge = isChargeableItem(hand);
+}
+if (!canCharge) return;
+
+        if (!isChargeableItem(hand)) return;
 
         UUID id = attacker.getUniqueId();
         int current = charge.getOrDefault(id, 0);
@@ -296,6 +341,15 @@ private String joinParts(String separator, String... parts) {
             double chance = getConfig().getDouble("ultra.lightning.chance-percent", 4.0);
             double roll = random.nextDouble() * 100.0;
             if (chance > 0 && roll < chance) {
+                // Optional extra mana cost when lightning procs.
+                // If AuraSkills is present and there isn't enough mana, we skip the lightning proc.
+                int extraManaCost = getConfig().getInt("ultra.lightning.extra-mana-cost", 3);
+                if (extraManaCost > 0 && auraSkillsHook != null) {
+                    if (!auraSkillsHook.tryConsumeMana(attacker, extraManaCost)) {
+                        return;
+                    }
+                }
+
                 double extra = getConfig().getDouble("ultra.lightning.extra-damage", 3.0);
                 int fireTicks = getConfig().getInt("ultra.lightning.fire-ticks", 60);
 
