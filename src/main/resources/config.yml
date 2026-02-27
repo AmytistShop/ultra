@@ -102,3 +102,35 @@ particles:
   kill:
     count: 12
     list: ["SCULK_SOUL", "SCULK_CHARGE_POP"]
+
+
+# Weapon block / parry (hold SHIFT)
+weapon-block:
+  enabled: true
+  # damage reduction while blocking (0.70 = 70%)
+  reduction: 0.70
+  # block works only in front cone (degrees). 120 = like shield-ish (front only).
+  angle-deg: 120.0
+  # how many hunger points (food level) are spent per second while holding block
+  hunger-per-second: 2.0
+  # parry (attack while blocking) deals tiny damage and also costs hunger
+  parry-damage: 1.0
+  parry-hunger-cost: 2.0
+  durability-loss-block: 1
+  durability-loss-parry: 1
+  # which items can be used to block
+  items:
+    - WOODEN_SWORD
+    - STONE_SWORD
+    - IRON_SWORD
+    - GOLDEN_SWORD
+    - DIAMOND_SWORD
+    - NETHERITE_SWORD
+    - WOODEN_AXE
+    - STONE_AXE
+    - IRON_AXE
+    - GOLDEN_AXE
+    - DIAMOND_AXE
+    - NETHERITE_AXE
+    - MACE
+    - TRIDENT

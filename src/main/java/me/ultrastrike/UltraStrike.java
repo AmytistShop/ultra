@@ -38,7 +38,21 @@ public final class UltraStrike extends JavaPlugin implements Listener {
 
     private double ultraMultiplier;
     private final java.util.Random random = new java.util.Random();
-    private int uiUpdateTicks;
+    
+    // Weapon blocking (parry)
+    private final java.util.Set<java.util.UUID> weaponBlocking = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Map<java.util.UUID, Double> blockHungerBuffer = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private boolean weaponBlockEnabled;
+    private double weaponBlockReduction; // 0.0-1.0
+    private double weaponBlockAngleDeg;
+    private double weaponBlockHungerPerSecond;
+    private double parryDamage;
+    private double parryHungerCost;
+    private int durabilityLossBlock;
+    private int durabilityLossParry;
+    private java.util.Set<org.bukkit.Material> weaponBlockItems = java.util.EnumSet.noneOf(org.bukkit.Material.class);
+private int uiUpdateTicks;
     private boolean showWhenZero;
     private boolean showOnlyWithSwordOrAxe;
     private final java.util.Set<Material> chargeableItems = new java.util.HashSet<>();
@@ -87,7 +101,43 @@ private int particlesKillCount;
         loadSettings();
         Bukkit.getPluginManager().registerEvents(this, this);
 
-        Bukkit.getScheduler().runTaskTimer(this, this::tickUi, 1L, uiUpdateTicks);
+        
+        // Weapon block tick task (hunger drain + auto-unblock if item not allowed)
+        new org.bukkit.scheduler.BukkitRunnable() {
+            @Override public void run() {
+                if (!weaponBlockEnabled) return;
+                for (java.util.UUID id : weaponBlocking) {
+                    org.bukkit.entity.Player p = Bukkit.getPlayer(id);
+                    if (p == null || !p.isOnline()) continue;
+
+                    // auto disable if not sneaking or item not allowed
+                    if (!p.isSneaking() || !isWeaponBlockItem(p.getInventory().getItemInMainHand().getType())) {
+                        weaponBlocking.remove(id);
+                        blockHungerBuffer.remove(id);
+                        continue;
+                    }
+
+                    // hunger drain
+                    double perSecond = weaponBlockHungerPerSecond;
+                    if (perSecond <= 0) continue;
+                    double perTick = perSecond / 20.0;
+                    double buf = blockHungerBuffer.getOrDefault(id, 0.0) + perTick;
+                    int take = (int) Math.floor(buf);
+                    if (take > 0) {
+                        buf -= take;
+                        int food = p.getFoodLevel();
+                        if (food <= 0) {
+                            weaponBlocking.remove(id);
+                            blockHungerBuffer.remove(id);
+                            continue;
+                        }
+                        p.setFoodLevel(Math.max(0, food - take));
+                    }
+                    blockHungerBuffer.put(id, buf);
+                }
+            }
+        }.runTaskTimer(this, 1L, 1L);
+Bukkit.getScheduler().runTaskTimer(this, this::tickUi, 1L, uiUpdateTicks);
         getLogger().info("UltraStrike enabled.");
     }
 
@@ -117,6 +167,11 @@ if (chargeableItems.isEmpty()) {
         String n = mat.name();
         if (n.endsWith("_SWORD") || n.endsWith("_AXE")) chargeableItems.add(mat);
     }
+    // ranged + special weapons (1.21+)
+    if (Material.TRIDENT != null) chargeableItems.add(Material.TRIDENT);
+    try { chargeableItems.add(Material.valueOf("BOW")); } catch (Exception ignored) {}
+    try { chargeableItems.add(Material.valueOf("CROSSBOW")); } catch (Exception ignored) {}
+    try { chargeableItems.add(Material.valueOf("MACE")); } catch (Exception ignored) {}
 }
 
         barLength = Math.max(5, getConfig().getInt("ui.bar.length", 20));
@@ -178,6 +233,32 @@ particlesKill = parseParticles(getConfig().getStringList("particles.kill.list"),
         }
     }
 
+
+        // Weapon block config
+        weaponBlockEnabled = getConfig().getBoolean("weapon-block.enabled", true);
+        weaponBlockReduction = Math.min(1.0, Math.max(0.0, getConfig().getDouble("weapon-block.reduction", 0.70)));
+        weaponBlockAngleDeg = Math.min(360.0, Math.max(30.0, getConfig().getDouble("weapon-block.angle-deg", 120.0)));
+        weaponBlockHungerPerSecond = Math.max(0.0, getConfig().getDouble("weapon-block.hunger-per-second", 2.0));
+        parryDamage = Math.max(0.0, getConfig().getDouble("weapon-block.parry-damage", 1.0));
+        parryHungerCost = Math.max(0.0, getConfig().getDouble("weapon-block.parry-hunger-cost", 2.0));
+        durabilityLossBlock = Math.max(0, getConfig().getInt("weapon-block.durability-loss-block", 1));
+        durabilityLossParry = Math.max(0, getConfig().getInt("weapon-block.durability-loss-parry", 1));
+
+        // Allowed items for weapon block
+        java.util.List<String> items = getConfig().getStringList("weapon-block.items");
+        if (items == null || items.isEmpty()) {
+            items = java.util.Arrays.asList(
+                    "WOODEN_SWORD","STONE_SWORD","IRON_SWORD","GOLDEN_SWORD","DIAMOND_SWORD","NETHERITE_SWORD",
+                    "WOODEN_AXE","STONE_AXE","IRON_AXE","GOLDEN_AXE","DIAMOND_AXE","NETHERITE_AXE",
+                    "MACE","TRIDENT"
+            );
+        }
+        java.util.Set<org.bukkit.Material> parsed = java.util.EnumSet.noneOf(org.bukkit.Material.class);
+        for (String s : items) {
+            if (s == null) continue;
+            try { parsed.add(org.bukkit.Material.valueOf(s.trim().toUpperCase(java.util.Locale.ROOT))); } catch (Exception ignored) {}
+        }
+        weaponBlockItems = parsed;
     private void tickUi() {
         uiTickCounter++;
 
@@ -186,7 +267,7 @@ particlesKill = parseParticles(getConfig().getStringList("particles.kill.list"),
 
         // Ultra charge (only relevant if holding correct item, but we still show HP/mana)
         int percent = charge.getOrDefault(p.getUniqueId(), 0);
-        boolean canUseUltraItem = !showOnlyWithSwordOrAxe || isChargeableItem(p.getInventory().getItemInMainHand());
+        boolean canUseUltraItem = true;
 
         // HP
         String hpPart = "";
@@ -272,6 +353,32 @@ private String joinParts(String separator, String... parts) {
 }
 
 
+
+    private boolean isWeaponBlockItem(Material mat) {
+        if (mat == null) return false;
+        return weaponBlockItems.contains(mat);
+    }
+
+    private void damageItemInHand(Player p, int amount) {
+        if (p == null || amount <= 0) return;
+        ItemStack it = p.getInventory().getItemInMainHand();
+        if (it == null || it.getType() == Material.AIR) return;
+        if (!(it.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable dmg)) return;
+        dmg.setDamage(dmg.getDamage() + amount);
+        it.setItemMeta(dmg);
+    }
+
+    private boolean isBlockAngleOk(Player defender, Entity attacker) {
+        if (defender == null || attacker == null) return false;
+        org.bukkit.util.Vector look = defender.getLocation().getDirection().setY(0).normalize();
+        org.bukkit.util.Vector toAtt = attacker.getLocation().toVector().subtract(defender.getLocation().toVector()).setY(0).normalize();
+        if (look.lengthSquared() < 1e-6 || toAtt.lengthSquared() < 1e-6) return true;
+        double dot = look.dot(toAtt); // 1 = in front, -1 = behind
+        double half = Math.toRadians(weaponBlockAngleDeg / 2.0);
+        double minDot = Math.cos(half);
+        return dot >= minDot;
+    }
+
     private int clamp(int v, int lo, int hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -280,6 +387,78 @@ private String joinParts(String separator, String... parts) {
     private Component color(String legacyText) {
         if (legacyText == null) legacyText = "";
         return legacy.deserialize(legacyText);
+    }
+
+
+    // ---------------- Weapon block / parry ----------------
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onWeaponBlockIncoming(EntityDamageByEntityEvent event) {
+        if (!weaponBlockEnabled) return;
+        if (!(event.getEntity() instanceof Player defender)) return;
+        if (!weaponBlocking.contains(defender.getUniqueId())) return;
+        if (!defender.isSneaking()) return;
+        if (!isWeaponBlockItem(defender.getInventory().getItemInMainHand().getType())) return;
+
+        Entity attacker = event.getDamager();
+        // for projectiles, attacker is the projectile; we want its shooter for angle calc
+        if (attacker instanceof Projectile proj && proj.getShooter() instanceof Entity shooter) {
+            attacker = shooter;
+        }
+        if (attacker == null) return;
+
+        if (!isBlockAngleOk(defender, attacker)) return;
+
+        double dmg = event.getDamage();
+        event.setDamage(dmg * (1.0 - weaponBlockReduction));
+
+        // durability + small hunger spike on successful block
+        damageItemInHand(defender, durabilityLossBlock);
+        if (parryHungerCost > 0) {
+            int take = (int) Math.floor(parryHungerCost);
+            if (take > 0) defender.setFoodLevel(Math.max(0, defender.getFoodLevel() - take));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onWeaponParryOutgoing(EntityDamageByEntityEvent event) {
+        if (!weaponBlockEnabled) return;
+        if (!(event.getDamager() instanceof Player attacker)) return;
+        if (!weaponBlocking.contains(attacker.getUniqueId())) return;
+        if (!attacker.isSneaking()) return;
+        if (!isWeaponBlockItem(attacker.getInventory().getItemInMainHand().getType())) return;
+
+        // Parry attack: keep blocking, but deal tiny damage and spend extra hunger/durability
+        event.setDamage(Math.min(event.getDamage(), parryDamage));
+        damageItemInHand(attacker, durabilityLossParry);
+
+        if (parryHungerCost > 0) {
+            int take = (int) Math.floor(parryHungerCost);
+            if (take > 0) attacker.setFoodLevel(Math.max(0, attacker.getFoodLevel() - take));
+        }
+    }
+
+    @EventHandler
+    public void onToggleSneak(org.bukkit.event.player.PlayerToggleSneakEvent e) {
+        if (!weaponBlockEnabled) return;
+        Player p = e.getPlayer();
+        if (e.isSneaking()) {
+            // start blocking
+            if (isWeaponBlockItem(p.getInventory().getItemInMainHand().getType()) && p.getFoodLevel() > 0) {
+                weaponBlocking.add(p.getUniqueId());
+            }
+        } else {
+            // stop blocking
+            weaponBlocking.remove(p.getUniqueId());
+            blockHungerBuffer.remove(p.getUniqueId());
+        }
+    }
+
+    @EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
+        java.util.UUID id = e.getPlayer().getUniqueId();
+        weaponBlocking.remove(id);
+        blockHungerBuffer.remove(id);
     }
 
 @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
