@@ -230,9 +230,8 @@ particlesKill = parseParticles(getConfig().getStringList("particles.kill.list"),
             defaults[11]=71; defaults[12]=78; defaults[13]=81; defaults[14]=87; defaults[15]=90;
             defaults[16]=98; defaults[17]=100;
             for (int i=1;i<=17;i++) gainByDamage.put(i, defaults[i]);
-        }
-    }
 
+        }
 
         // Weapon block config
         weaponBlockEnabled = getConfig().getBoolean("weapon-block.enabled", true);
@@ -259,6 +258,10 @@ particlesKill = parseParticles(getConfig().getStringList("particles.kill.list"),
             try { parsed.add(org.bukkit.Material.valueOf(s.trim().toUpperCase(java.util.Locale.ROOT))); } catch (Exception ignored) {}
         }
         weaponBlockItems = parsed;
+
+    }
+
+
     private void tickUi() {
         uiTickCounter++;
 
