@@ -566,11 +566,6 @@ if (!canCharge) return;
         charge.remove(e.getPlayer().getUniqueId());
     }
 
-@EventHandler
-    public void onQuit(PlayerQuitEvent e) {
-        charge.remove(e.getPlayer().getUniqueId());
-    }
-
     private enum UiState { CHARGING, READY, USED }
 
     private void sendActionbar(Player p, int percent, UiState state) {
